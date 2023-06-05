@@ -1,1 +1,17 @@
-// место для вашего кода
+#pragma once
+// напишите решение с нуля
+// код сохраните в свой git-репозиторий
+
+
+#include "transport_catalogue.h"
+#include <iostream>
+
+namespace transport {
+
+void FillTransportCatalogue(TransportCatalogue& catalogue);
+Bus FillRoute(std::string& line);
+Stop FillStop(std::string& line);
+void AddStopDistances(std::string& line, TransportCatalogue& catalogue);
+
+} // namespace transport
+
