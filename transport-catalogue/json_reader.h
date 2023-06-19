@@ -1,18 +1,40 @@
 #pragma once
-// напишите решение с нуля
-// код сохраните в свой git-репозиторий
 
-
+/*
+ * Здесь можно разместить код наполнения транспортного справочника данными из JSON,
+ * а также код обработки запросов к базе и формирование массива ответов в формате JSON
+ */
+#include "json.h"
 #include "transport_catalogue.h"
+#include "map_renderer.h"
+#include "request_handler.h"
+
 #include <iostream>
 
+class JsonReader {
+public:
+    JsonReader(std::istream& input)
+        : input_(json::Load(input))
+    {}
 
-namespace transport {
+    const json::Node& GetBaseRequests() const;
+    const json::Node& GetStatRequests() const;
+    const json::Node& GetRenderSettings() const;
 
-	void FillCatalogue(std::istream& in, Catalogue& catalogue);
+    void ProcessRequests(const json::Node& stat_requests, RequestHandler& rh) const;
 
-	std::pair<std::string, geo::Coordinates> FillStop(std::string& line);
-	void FillStopDistances(std::string& line, Catalogue& catalogue);
-	std::tuple<std::string, std::vector<const Stop*>, bool> FillRoute(std::string& line, transport::Catalogue& catalogue);
+    void FillCatalogue(transport::Catalogue& catalogue);
+    renderer::MapRenderer FillRenderSettings(const json::Dict& request_map) const;
 
-} // namespace transport
+    const json::Node PrintRoute(const json::Dict& request_map, RequestHandler& rh) const;
+    const json::Node PrintStop(const json::Dict& request_map, RequestHandler& rh) const;
+    const json::Node PrintMap(const json::Dict& request_map, RequestHandler& rh) const;
+
+private:
+    json::Document input_;
+    json::Node dummy_ = nullptr;
+
+    std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> FillStop(const json::Dict& request_map) const;
+    void FillStopDistances(transport::Catalogue& catalogue) const;
+    std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> FillRoute(const json::Dict& request_map, transport::Catalogue& catalogue) const;
+};
