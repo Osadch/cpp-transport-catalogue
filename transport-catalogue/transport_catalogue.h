@@ -1,6 +1,12 @@
 #pragma once
-// напишите решение с нуля
-// код сохраните в свой git-репозиторий
+
+/*
+ * Здесь можно разместить код транспортного справочника
+ */
+#include "geo.h"
+#include "domain.h"
+
+#include <iostream>
 #include <deque>
 #include <string>
 #include <unordered_map>
@@ -9,31 +15,9 @@
 #include <optional>
 #include <unordered_set>
 #include <set>
-#include <iostream>
-
-#include "geo.h"
+#include <map>
 
 namespace transport {
-
-struct Stop {
-    std::string name;
-    geo::Coordinates coordinates;
-    std::set<std::string> buses_by_stop;
-};
-
-struct Bus {
-    std::string number;
-    std::vector<const Stop*> stops;
-    bool circular_route;
-};
-
-struct RouteInfo {
-    size_t stops_count;
-    size_t unique_stops_count;
-    double route_length;
-    double curvature;
-
-};
 
 class Catalogue {
 public:
@@ -49,11 +33,10 @@ public:
     void AddRoute(std::string_view bus_number, const std::vector<const Stop*> stops, bool is_circle);
     const Bus* FindRoute(std::string_view bus_number) const;
     const Stop* FindStop(std::string_view stop_name) const;
-    std::optional<RouteInfo> GetRouteInfo(const std::string_view& bus_number) const;
     size_t UniqueStopsCount(std::string_view bus_number) const;
-    const std::set<std::string> GetBusesByStop(std::string_view stop_name) const;
     void SetDistance(const Stop* from, const Stop* to, const int distance);
     int GetDistance(const Stop* from, const Stop* to) const;
+    const std::map<std::string_view, const Bus*> GetSortedAllBuses() const;
 
 private:
     std::deque<Bus> all_buses_;
