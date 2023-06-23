@@ -1,5 +1,6 @@
 #include "request_handler.h"
 
+
 std::optional<transport::BusStat> RequestHandler::GetBusStat(const std::string_view bus_number) const {
     transport::BusStat bus_stat{};
     const transport::Bus* bus = catalogue_.FindRoute(bus_number);
