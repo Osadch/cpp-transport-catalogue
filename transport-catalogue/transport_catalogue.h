@@ -14,9 +14,10 @@
 #include <set>
 #include <map>
 
+
 namespace transport {
 
-    class Catalogue {
+    class TransportCatalogue {
     public:
         struct StopDistancesHasher {
             size_t operator()(const std::pair<const Stop*, const Stop*>& points) const {
