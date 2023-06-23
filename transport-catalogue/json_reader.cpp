@@ -1,73 +1,98 @@
 #include "json_reader.h"
 
 const json::Node& JsonReader::GetBaseRequests() const {
-    if (input_.GetRoot().AsMap().count("base_requests") == 0 ) return dummy_;
-    return input_.GetRoot().AsMap().at("base_requests");
+    auto it = input_.GetRoot().AsMap().find("base_requests");
+    if (it == input_.GetRoot().AsMap().end())
+        throw std::runtime_error("No base_requests field in JSON");
+
+    return it->second;
 }
 
 const json::Node& JsonReader::GetStatRequests() const {
-    if (input_.GetRoot().AsMap().count("stat_requests") == 0) return dummy_;
-    return input_.GetRoot().AsMap().at("stat_requests");
+    auto it = input_.GetRoot().AsMap().find("stat_requests");
+    if (it == input_.GetRoot().AsMap().end())
+        throw std::runtime_error("No stat_requests field in JSON");
+
+    return it->second;
 }
 
 const json::Node& JsonReader::GetRenderSettings() const {
-    if (input_.GetRoot().AsMap().count("render_settings") == 0) return dummy_;
-    return input_.GetRoot().AsMap().at("render_settings");
+    auto it = input_.GetRoot().AsMap().find("render_settings");
+    if (it == input_.GetRoot().AsMap().end())
+        throw std::runtime_error("No render_settings field in JSON");
+
+    return it->second;
 }
+
 
 void JsonReader::ProcessRequests(const json::Node& stat_requests, RequestHandler& rh) const {
     json::Array result;
-    for (auto& request : stat_requests.AsArray()) {
-        const auto& request_map = request.AsMap();
-        const auto& type = request_map.at("type").AsString();
-        if (type == "Stop") result.push_back(PrintStop(request_map, rh).AsMap());
-        if (type == "Bus") result.push_back(PrintRoute(request_map, rh).AsMap());
-        if (type == "Map") result.push_back(PrintMap(request_map, rh).AsMap());
+
+    for (const auto& request_node : stat_requests.AsArray()) {
+        const auto& request_map = request_node.AsMap();
+
+        if (!request_map.count("type"))
+            throw std::runtime_error("No type field in response node");
+
+        const std::string& type = request_map.at("type").AsString();
+
+        if (type == "Stop")
+            result.push_back(PrintStop(request_map, rh).AsMap());
+        else if (type == "Bus")
+            result.push_back(PrintRoute(request_map, rh).AsMap());
+        else if (type == "Map")
+            result.push_back(PrintMap(request_map, rh).AsMap());
+        else
+            throw std::runtime_error("Unknown request type: " + type);
     }
 
     json::Print(json::Document{ result }, std::cout);
 }
 
-void JsonReader::FillCatalogue(transport::Catalogue& catalogue) {
-    const json::Array& arr = GetBaseRequests().AsArray();
-    for (const auto& request_stops : arr) {
-        const auto& request_stops_map = request_stops.AsMap();
-        const auto& type = request_stops_map.at("type").AsString();
-        if (type == "Stop") {
-            auto [stop_name, coordinates, stop_distances] = FillStop(request_stops_map);
-            catalogue.AddStop(stop_name, coordinates);
-        }
-    }
-    FillStopDistances(catalogue);
 
-    for (const auto& request_bus : arr) {
-        const auto& request_bus_map = request_bus.AsMap();
-        const auto& type = request_bus_map.at("type").AsString();
-        if (type == "Bus") {
-            auto [bus_number, stops, circular_route] = FillRoute(request_bus_map, catalogue);
-            catalogue.AddRoute(bus_number, stops, circular_route);
-        }
-    }
-}
-
-std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> JsonReader::FillStop(const json::Dict& request_map) const {
-    std::string_view stop_name = request_map.at("name").AsString();
-    geo::Coordinates coordinates = { request_map.at("latitude").AsDouble(), request_map.at("longitude").AsDouble() };
-    std::map<std::string_view, int> stop_distances;
-    auto distances = request_map.at("road_distances").AsMap();
-    for (const auto& [stop_name, dist] : distances) {
-        stop_distances.emplace(stop_name, dist.AsInt());
-    }
-    return { stop_name, coordinates, stop_distances };
-}
-
-void JsonReader::FillStopDistances(transport::Catalogue& catalogue) const {
+void JsonReader::FillCatalogue(transport::TransportCatalogue& catalogue) {
     const json::Array& arr = GetBaseRequests().AsArray();
     for (auto& request_stops : arr) {
         const auto& request_stops_map = request_stops.AsMap();
         const auto& type = request_stops_map.at("type").AsString();
         if (type == "Stop") {
-            auto [stop_name, coordinates, stop_distances] = FillStop(request_stops_map);
+            auto [stop_name, coordinates, stop_distances] = ProcessStop(request_stops_map);
+            catalogue.AddStop(stop_name, coordinates);
+        }
+    }
+    ProcessStopDistances(catalogue);
+
+    for (auto& request_bus : arr) {
+        const auto& request_bus_map = request_bus.AsMap();
+        const auto& type = request_bus_map.at("type").AsString();
+        if (type == "Bus") {
+            auto [bus_number, stops, circular_route] = ProcessRoute(request_bus_map, catalogue);
+            catalogue.AddRoute(bus_number, stops, circular_route);
+        }
+    }
+}
+
+// Преобразует словарь Json с информацией о точке остановки в tuple
+// Если в словаре отсутствует какой-либо ключ, выбрасывает исключение
+std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> JsonReader::ProcessStop(const json::Dict& stop_request) const {
+    std::string_view stop_name = stop_request.at("name").AsString();// название остановки
+    geo::Coordinates coordinates = { stop_request.at("latitude").AsDouble(), stop_request.at("longitude").AsDouble() }; // координаты остановки
+    std::map<std::string_view, int> stop_distances; // расстояния до ближайших остановок
+    auto& distances = stop_request.at("road_distances").AsMap();
+    for (auto& [near_stop_name, distance] : distances) {
+        stop_distances.emplace(near_stop_name, distance.AsInt());
+    }
+    return std::make_tuple(stop_name, coordinates, stop_distances);
+}
+
+
+void JsonReader::ProcessStopDistances(transport::TransportCatalogue& catalogue) const {
+    const json::Array& arr = GetBaseRequests().AsArray();
+    for (auto& request_stops : arr) {
+        const auto& request_stops_map = request_stops.AsMap();
+        const auto& type = request_stops_map.at("type").AsString();
+        if (type == "Stop") {
+            auto [stop_name, coordinates, stop_distances] = ProcessStop(request_stops_map);
             for (auto& [to_name, dist] : stop_distances) {
                 auto from = catalogue.FindStop(stop_name);
                 auto to = catalogue.FindStop(to_name);
@@ -77,16 +102,19 @@ void JsonReader::FillStopDistances(transport::Catalogue& catalogue) const {
     }
 }
 
-std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> JsonReader::FillRoute(const json::Dict& request_map, transport::Catalogue& catalogue) const {
-    std::string_view bus_number = request_map.at("name").AsString();
-    std::vector<const transport::Stop*> stops;
+// Преобразует словарь Json с информацией о маршруте в tuple
+// Если в словаре отсутствует какой-либо ключ, выбрасывает исключение
+std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> JsonReader::ProcessRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const {
+    std::string_view bus_number = request_map.at("name").AsString(); // номер автобуса
+    std::vector<const transport::Stop*> stops;  // остановки на маршруте
     for (auto& stop : request_map.at("stops").AsArray()) {
-        stops.push_back(catalogue.FindStop(stop.AsString()));
+        stops.push_back(catalogue.FindStop(stop.AsString())); // добавление остановки в вектор
     }
-    bool circular_route = request_map.at("is_roundtrip").AsBool();
+    bool circular_route = request_map.at("is_roundtrip").AsBool(); // является ли маршрут кольцевым
 
     return std::make_tuple(bus_number, stops, circular_route);
 }
+
 
 renderer::MapRenderer JsonReader::FillRenderSettings(const json::Dict& request_map) const {
     renderer::RenderSettings render_settings;
