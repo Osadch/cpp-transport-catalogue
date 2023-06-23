@@ -3,12 +3,21 @@
 #include <iostream>
 #include <map>
 #include <string>
-#include <vector>
 #include <variant>
-
-using namespace std::string_view_literals;
+#include <vector>
 
 namespace json {
+
+    struct RenderContext {
+        RenderContext(std::ostream& out, int indent = 0) : out(out), indent(indent) {}
+        void RenderIndent() const {
+            for (int i = 0; i < indent; ++i) {
+                out.put(' ');
+            }
+        }
+        std::ostream& out;
+        int indent = 0;
+    };
 
     class Node;
     using Dict = std::map<std::string, Node>;
@@ -18,7 +27,6 @@ namespace json {
     public:
         using runtime_error::runtime_error;
     };
-      
 
     using NodeData = std::variant<std::nullptr_t, Array, Dict, bool, int, double, std::string>;
     class Node final : private NodeData {
@@ -33,7 +41,7 @@ namespace json {
         bool IsPureDouble() const noexcept;
         bool IsString() const noexcept;
         bool IsArray() const noexcept;
-        bool IsMap() const noexcept;
+        bool IsMap() const noexcept;        
         const Array& AsArray() const;
         const Dict& AsMap() const;
         bool AsBool() const;
@@ -49,49 +57,22 @@ namespace json {
         }
     };
 
-    class Document {
+    class Document final {
     public:
         explicit Document(Node root);
         const Node& GetRoot() const;
-
-        bool operator==(const Document& rhs) const;
-        bool operator!=(const Document& rhs) const;
-
+        friend bool operator==(const Document& lhs, const Document& rhs) {
+            return lhs.root_ == rhs.root_;
+        }
+        friend bool operator!=(const Document& lhs, const Document& rhs) {
+            return !(lhs == rhs);
+        }
     private:
         Node root_;
     };
 
     Document Load(std::istream& input);
 
-    struct PrintContext {
-        std::ostream& out;
-        int indent_step = 4;
-        int indent = 0;
-
-        void PrintIndent() const {
-            for (int i = 0; i < indent; ++i) {
-                out.put(' ');
-            }
-        }
-
-        PrintContext Indented() const {
-            return { out, indent_step, indent_step + indent };
-        }
-    };
-
-    void PrintValue(std::nullptr_t, const PrintContext& ctx);
-    void PrintValue(std::string value, const PrintContext& ctx);
-    void PrintValue(bool value, const PrintContext& ctx);
-    void PrintValue(Array array, const PrintContext& ctx);
-    void PrintValue(Dict dict, const PrintContext& ctx);
-
-    template <typename Value>
-    void PrintValue(const Value& value, const PrintContext& ctx) {
-        ctx.out << value;
-    }
-
-    void PrintNode(const Node& node, PrintContext ctx);
     void Print(const Document& doc, std::ostream& output);
 
-   
-} // namespace json
+}  // namespace json
