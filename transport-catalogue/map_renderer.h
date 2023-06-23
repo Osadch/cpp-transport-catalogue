@@ -4,6 +4,7 @@
 #include "geo.h"
 #include "json.h"
 #include "domain.h"
+
 #include <algorithm>
 
 namespace renderer {
@@ -13,16 +14,15 @@ namespace renderer {
 
     class SphereProjector {
     public:
+        
         template <typename PointInputIt>
         SphereProjector(PointInputIt points_begin, PointInputIt points_end,
             double max_width, double max_height, double padding)
             : padding_(padding) //
         {
-            
             if (points_begin == points_end) {
                 return;
             }
-
             const auto [left_it, right_it] = std::minmax_element(
                 points_begin, points_end,
                 [](auto lhs, auto rhs) { return lhs.lng < rhs.lng; });
@@ -46,15 +46,15 @@ namespace renderer {
             }
 
             if (width_zoom && height_zoom) {
-               
+
                 zoom_coeff_ = std::min(*width_zoom, *height_zoom);
             }
             else if (width_zoom) {
-                
+
                 zoom_coeff_ = *width_zoom;
             }
             else if (height_zoom) {
-                
+
                 zoom_coeff_ = *height_zoom;
             }
         }
@@ -95,7 +95,7 @@ namespace renderer {
         {}
 
         std::vector<svg::Polyline> GetRouteLines(const std::map<std::string_view, const transport::Bus*>& buses, const SphereProjector& sp) const;
-        std::vector<svg::Text> DrawBusLabel(const std::map<std::string_view, const transport::Bus*>& buses, const SphereProjector& sp) const;
+        std::vector<svg::Text> GetBusLabel(const std::map<std::string_view, const transport::Bus*>& buses, const SphereProjector& sp) const;
         std::vector<svg::Circle> GetStopsSymbols(const std::map<std::string_view, const transport::Stop*>& stops, const SphereProjector& sp) const;
         std::vector<svg::Text> GetStopsLabels(const std::map<std::string_view, const transport::Stop*>& stops, const SphereProjector& sp) const;
 
