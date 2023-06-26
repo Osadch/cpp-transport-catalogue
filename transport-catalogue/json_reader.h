@@ -8,6 +8,22 @@
 
 #include <iostream>
 
+struct RouteInfo {
+    std::string_view number;
+    std::vector<const transport::Stop*> stops;
+    bool is_circular;
+};
+
+struct StopInfo {
+    std::string_view name;
+    geo::Coordinates coordinates;
+    std::map<std::string_view, int> distances;
+};
+
+enum ColorType {
+    RGB = 3,
+    RGBA = 4
+};
 
 class JsonReader {
 public:
@@ -22,9 +38,6 @@ public:
     void ProcessRequests(const json::Node& stat_requests, RequestHandler& rh) const;
 
     void FillCatalogue(transport::TransportCatalogue& catalogue);
-    // std::vector<const transport::Stop*> FillRouteStops(transport::Catalogue& catalogue, const json::Array& stops_arr) const;
-    // bool IsCircularRoute(const json::Dict& request_map) const;
-   // transport::Bus CreateBus(const json::Dict& request_map, transport::Catalogue& catalogue) const;
     renderer::MapRenderer FillRenderSettings(const json::Dict& request_map) const;
 
     
@@ -32,15 +45,13 @@ public:
     const json::Node PrintRoute(const json::Dict& request_map, RequestHandler& rh) const;
     const json::Node PrintStop(const json::Dict& request_map, RequestHandler& rh) const;
     const json::Node PrintMap(const json::Dict& request_map, RequestHandler& rh) const;
+    RouteInfo ProcessRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const;
+    StopInfo ProcessStop(const json::Dict& stop_request) const;
 
 private:
     json::Document input_;
     json::Node dummy_ = nullptr;
-        
     
-    std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> ProcessStop(const json::Dict& stop_request) const;
-    void ProcessStopDistances(transport::TransportCatalogue& catalogue) const;
-    //void FillStop(transport::Catalogue& catalogue, const json::Dict& request_map) const;
-    std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> ProcessRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const;
+    void ProcessStopDistances(transport::TransportCatalogue& catalogue) const;  
     
 };
