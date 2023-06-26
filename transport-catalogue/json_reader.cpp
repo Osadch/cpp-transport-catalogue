@@ -52,43 +52,38 @@ void JsonReader::ProcessRequests(const json::Node& stat_requests, RequestHandler
 
 void JsonReader::FillCatalogue(transport::TransportCatalogue& catalogue) {
     const json::Array& arr = GetBaseRequests().AsArray();
-    for (auto& request_stops : arr) {
-        const auto& request_stops_map = request_stops.AsMap();
-        const auto& type = request_stops_map.at("type").AsString();
+    for (const auto& request : arr) {
+        const auto& request_map = request.AsMap();
+        const auto& type = request_map.at("type").AsString();
         if (type == "Stop") {
-            auto [stop_name, coordinates, stop_distances] = ProcessStop(request_stops_map);
+            auto [stop_name, coordinates, stop_distances] = ProcessStop(request_map);
             catalogue.AddStop(stop_name, coordinates);
         }
-    }
-    ProcessStopDistances(catalogue);
-
-    for (auto& request_bus : arr) {
-        const auto& request_bus_map = request_bus.AsMap();
-        const auto& type = request_bus_map.at("type").AsString();
         if (type == "Bus") {
-            auto [bus_number, stops, circular_route] = ProcessRoute(request_bus_map, catalogue);
+            auto [bus_number, stops, circular_route] = ProcessRoute(request_map, catalogue);
             catalogue.AddRoute(bus_number, stops, circular_route);
         }
     }
+    ProcessStopDistances(catalogue);
 }
 
-// Преобразует словарь Json с информацией о точке остановки в tuple
-// Если в словаре отсутствует какой-либо ключ, выбрасывает исключение
-std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> JsonReader::ProcessStop(const json::Dict& stop_request) const {
-    std::string_view stop_name = stop_request.at("name").AsString();// название остановки
-    geo::Coordinates coordinates = { stop_request.at("latitude").AsDouble(), stop_request.at("longitude").AsDouble() }; // координаты остановки
-    std::map<std::string_view, int> stop_distances; // расстояния до ближайших остановок
+//
+
+StopInfo JsonReader::ProcessStop(const json::Dict& stop_request) const {
+    StopInfo stop_info;
+    stop_info.name = stop_request.at("name").AsString();
+    stop_info.coordinates = { stop_request.at("latitude").AsDouble(), stop_request.at("longitude").AsDouble() };
     auto& distances = stop_request.at("road_distances").AsMap();
     for (auto& [near_stop_name, distance] : distances) {
-        stop_distances.emplace(near_stop_name, distance.AsInt());
+        stop_info.distances.emplace(near_stop_name, distance.AsInt());
     }
-    return std::make_tuple(stop_name, coordinates, stop_distances);
+    return stop_info;
 }
 
 
 void JsonReader::ProcessStopDistances(transport::TransportCatalogue& catalogue) const {
     const json::Array& arr = GetBaseRequests().AsArray();
-    for (auto& request_stops : arr) {
+    for (const auto& request_stops : arr) {
         const auto& request_stops_map = request_stops.AsMap();
         const auto& type = request_stops_map.at("type").AsString();
         if (type == "Stop") {
@@ -102,17 +97,41 @@ void JsonReader::ProcessStopDistances(transport::TransportCatalogue& catalogue) 
     }
 }
 
-// Преобразует словарь Json с информацией о маршруте в tuple
-// Если в словаре отсутствует какой-либо ключ, выбрасывает исключение
-std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> JsonReader::ProcessRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const {
-    std::string_view bus_number = request_map.at("name").AsString(); // номер автобуса
-    std::vector<const transport::Stop*> stops;  // остановки на маршруте
-    for (auto& stop : request_map.at("stops").AsArray()) {
-        stops.push_back(catalogue.FindStop(stop.AsString())); // добавление остановки в вектор
-    }
-    bool circular_route = request_map.at("is_roundtrip").AsBool(); // является ли маршрут кольцевым
+//
 
-    return std::make_tuple(bus_number, stops, circular_route);
+RouteInfo JsonReader::ProcessRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const {
+    RouteInfo route_info;
+    route_info.number = request_map.at("name").AsString();
+    for (auto& stop : request_map.at("stops").AsArray()) {
+        route_info.stops.push_back(catalogue.FindStop(stop.AsString()));
+    }
+    route_info.is_circular = request_map.at("is_roundtrip").AsBool();
+    return route_info;
+}
+
+
+const auto MAX_COLOR_TYPE = static_cast<int>(ColorType::RGBA);
+
+
+svg::Color ParseColor(const json::Node& color_node) {
+    if (color_node.IsString()) {
+        return color_node.AsString();
+    }
+    else if (color_node.IsArray()) {
+        auto color_array = color_node.AsArray();
+        if (color_array.size() == ColorType::RGB) {
+            return svg::Rgb(color_array[0].AsInt(), color_array[1].AsInt(), color_array[2].AsInt());
+        }
+        else if (color_array.size() == ColorType::RGBA) {
+            return svg::Rgba(color_array[0].AsInt(), color_array[1].AsInt(), color_array[2].AsInt(), color_array[3].AsDouble());
+        }
+        else {
+            throw std::logic_error("wrong color type");
+        }
+    }
+    else {
+        throw std::logic_error("wrong color type");
+    }
 }
 
 
@@ -130,38 +149,45 @@ renderer::MapRenderer JsonReader::FillRenderSettings(const json::Dict& request_m
     const json::Array& stop_label_offset = request_map.at("stop_label_offset").AsArray();
     render_settings.stop_label_offset = { stop_label_offset[0].AsDouble(), stop_label_offset[1].AsDouble() };
 
-    if (request_map.at("underlayer_color").IsString()) render_settings.underlayer_color = request_map.at("underlayer_color").AsString();
-    else if (request_map.at("underlayer_color").IsArray()) {
-        const json::Array& underlayer_color = request_map.at("underlayer_color").AsArray();
-        if (underlayer_color.size() == 3) {
-            render_settings.underlayer_color = svg::Rgb(underlayer_color[0].AsInt(), underlayer_color[1].AsInt(), underlayer_color[2].AsInt());
-        }
-        else if (underlayer_color.size() == 4) {
-            render_settings.underlayer_color = svg::Rgba(underlayer_color[0].AsInt(), underlayer_color[1].AsInt(), underlayer_color[2].AsInt(), underlayer_color[3].AsDouble());
-        }
-        else throw std::logic_error("wrong underlayer colortype");
+
+    auto underlayer_color_node = request_map.at("underlayer_color");
+    if (underlayer_color_node.IsString()) {
+        render_settings.underlayer_color = underlayer_color_node.AsString();
     }
-    else throw std::logic_error("wrong underlayer color");
+    else if (underlayer_color_node.IsArray()) {
+        auto underlayer_color_arr = underlayer_color_node.AsArray();
+        auto underlayer_color_size = underlayer_color_arr.size();
+        if (underlayer_color_size == ColorType::RGB) {
+            render_settings.underlayer_color = svg::Rgb{
+ static_cast<uint8_t>(underlayer_color_arr[0].AsInt()),
+ static_cast<uint8_t>(underlayer_color_arr[1].AsInt()),
+ static_cast<uint8_t>(underlayer_color_arr[2].AsInt())
+            };
+        }
+        else if (underlayer_color_size == ColorType::RGBA) {
+            render_settings.underlayer_color = svg::Rgba{
+    static_cast<uint8_t>(underlayer_color_arr[0].AsInt()),
+    static_cast<uint8_t>(underlayer_color_arr[1].AsInt()),
+    static_cast<uint8_t>(underlayer_color_arr[2].AsInt()),
+    static_cast<double>(underlayer_color_arr[3].AsDouble())
+            };
+        }
+        else {
+            throw std::logic_error("wrong underlayer color");
+        }
+    }
+    else {
+        throw std::logic_error("wrong underlayer color");
+    }
 
     render_settings.underlayer_width = request_map.at("underlayer_width").AsDouble();
-
     const json::Array& color_palette = request_map.at("color_palette").AsArray();
     for (const auto& color_element : color_palette) {
-        if (color_element.IsString()) render_settings.color_palette.push_back(color_element.AsString());
-        else if (color_element.IsArray()) {
-            const json::Array& color_type = color_element.AsArray();
-            if (color_type.size() == 3) {
-                render_settings.color_palette.push_back(svg::Rgb(color_type[0].AsInt(), color_type[1].AsInt(), color_type[2].AsInt()));
-            }
-            else if (color_type.size() == 4) {
-                render_settings.color_palette.push_back(svg::Rgba(color_type[0].AsInt(), color_type[1].AsInt(), color_type[2].AsInt(), color_type[3].AsDouble()));
-            }
-            else throw std::logic_error("wrong color_palette type");
-        }
-        else throw std::logic_error("wrong color_palette");
+        auto parsed_color = ParseColor(color_element);
+        render_settings.color_palette.push_back(parsed_color);
     }
 
-    return render_settings;
+    return renderer::MapRenderer(render_settings);
 }
 
 const json::Node JsonReader::PrintRoute(const json::Dict& request_map, RequestHandler& rh) const {
