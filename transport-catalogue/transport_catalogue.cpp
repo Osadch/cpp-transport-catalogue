@@ -1,5 +1,6 @@
 #include "transport_catalogue.h"
 
+
 namespace transport {
 
 
@@ -79,5 +80,6 @@ namespace transport {
         bus_stat.curvature = route_length / geographic_length;
         return bus_stat;
     }
+   
 
 } // namespace transport
