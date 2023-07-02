@@ -27,6 +27,7 @@ enum ColorType {
 
 class JsonReader {
 public:
+
     JsonReader(std::istream& input)
         : input_(json::Load(input))
     {}
@@ -49,6 +50,7 @@ public:
     StopInfo ProcessStop(const json::Dict& stop_request) const;
 
 private:
+
     json::Document input_;
     json::Node dummy_ = nullptr;
     
