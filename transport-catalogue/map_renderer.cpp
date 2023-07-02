@@ -134,6 +134,7 @@ namespace renderer {
                 all_stops[stop->name] = stop;
             }
         }
+
         SphereProjector sp(route_stops_coord.begin(), route_stops_coord.end(), render_settings_.width, render_settings_.height, render_settings_.padding);
 
         for (const auto& line : GetRouteLines(buses, sp)) result.Add(line);
