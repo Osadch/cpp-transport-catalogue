@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include "json.h"
 #include "transport_catalogue.h"
 #include "map_renderer.h"
@@ -8,17 +7,6 @@
 
 #include <iostream>
 
-struct RouteInfo {
-    std::string_view number;
-    std::vector<const transport::Stop*> stops;
-    bool is_circular;
-};
-
-struct StopInfo {
-    std::string_view name;
-    geo::Coordinates coordinates;
-    std::map<std::string_view, int> distances;
-};
 
 enum ColorType {
     RGB = 3,
@@ -35,25 +23,26 @@ public:
     const json::Node& GetBaseRequests() const;
     const json::Node& GetStatRequests() const;
     const json::Node& GetRenderSettings() const;
-
+    const json::Node& GetRoutingSettings() const;
+        
     void ProcessRequests(const json::Node& stat_requests, RequestHandler& rh) const;
 
     void FillCatalogue(transport::TransportCatalogue& catalogue);
-    renderer::MapRenderer FillRenderSettings(const json::Dict& request_map) const;
-
-    
+    renderer::MapRenderer FillRenderSettings(const json::Node& settings) const;
+    transport::Router FillRoutingSettings(const json::Node& settings) const;
 
     const json::Node PrintRoute(const json::Dict& request_map, RequestHandler& rh) const;
     const json::Node PrintStop(const json::Dict& request_map, RequestHandler& rh) const;
     const json::Node PrintMap(const json::Dict& request_map, RequestHandler& rh) const;
-    RouteInfo ProcessRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const;
-    StopInfo ProcessStop(const json::Dict& stop_request) const;
+    const json::Node PrintRouting(const json::Dict& request_map, RequestHandler& rh) const;
 
 private:
 
     json::Document input_;
     json::Node dummy_ = nullptr;
-    
-    void ProcessStopDistances(transport::TransportCatalogue& catalogue) const;  
+         
+    std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> FillStop(const json::Dict& request_map) const;
+    void FillStopDistances(transport::TransportCatalogue& catalogue) const;
+    std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> FillRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const;
     
 };
