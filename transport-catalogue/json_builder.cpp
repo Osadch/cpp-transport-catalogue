@@ -11,11 +11,9 @@ namespace json {
         auto* top_node = nodes_stack_.back();
         if (top_node->IsDict() && !key_) {
             key_ = std::move(key);
-        }
-        else {
+        } else {
             throw std::logic_error("Wrong map key: " + key);
         }
-
         return DictKeyContext(*this);
     }
 
@@ -30,19 +28,15 @@ namespace json {
             key_ = std::nullopt;
             top_node = &pos->second;
             top_node->GetValue() = std::move(value);
-        }
-        else if (top_node->IsArray()) {
+        } else if (top_node->IsArray()) {
             auto& array = std::get<Array>(top_node->GetValue());
             array.emplace_back(GetNode(value));
             top_node = &array.back();
-        }
-        else if (root_.IsNull()) {
+        } else if (root_.IsNull()) {
             root_.GetValue() = std::move(value);
-        }
-        else {
+        } else {
             throw std::logic_error("Value() called in unknown container");
         }
-
         return *this;
     }
 
@@ -57,19 +51,15 @@ namespace json {
             auto [pos, _] = dict.emplace(std::move(key_.value()), Dict());
             key_ = std::nullopt;
             nodes_stack_.emplace_back(&pos->second);
-        }
-        else if (top_node->IsArray()) {
+        } else if (top_node->IsArray()) {
             auto& array = std::get<Array>(top_node->GetValue());
             array.emplace_back(Dict());
             nodes_stack_.emplace_back(&array.back());
-        }
-        else if (top_node->IsNull()) {
+        } else if (top_node->IsNull()) {
             top_node->GetValue() = Dict();
-        }
-        else {
+        } else {
             throw std::logic_error("Wrong prev node");
         }
-
         return DictItemContext(*this);
     }
 
@@ -95,17 +85,14 @@ namespace json {
             key_ = std::nullopt;
 
             nodes_stack_.emplace_back(&pos->second);
-        }
-        else if (top_node->IsArray()) {
+        }  else if (top_node->IsArray()) {
             auto& array = std::get<Array>(top_node->GetValue());
             array.emplace_back(Array());
 
             nodes_stack_.emplace_back(&array.back());
-        }
-        else if (top_node->IsNull()) {
+        } else if (top_node->IsNull()) {
             top_node->GetValue() = Array();
-        }
-        else throw std::logic_error("Wrong prev node");
+        } else throw std::logic_error("Wrong prev node");
 
         return ArrayItemContext(*this);
     }
@@ -128,23 +115,17 @@ namespace json {
     Node Builder::GetNode(Node::Value value) {
         if (std::holds_alternative<int>(value)) {
             return Node(std::get<int>(value));
-        }
-        if (std::holds_alternative<double>(value)) {
+        } if (std::holds_alternative<double>(value)) {
             return Node(std::get<double>(value));
-        }
-        if (std::holds_alternative<std::string>(value)) {
+        } if (std::holds_alternative<std::string>(value)) {
             return Node(std::get<std::string>(value));
-        }
-        if (std::holds_alternative<std::nullptr_t>(value)) {
+        } if (std::holds_alternative<std::nullptr_t>(value)) {
             return Node(std::get<std::nullptr_t>(value));
-        }
-        if (std::holds_alternative<bool>(value)) {
+        } if (std::holds_alternative<bool>(value)) {
             return Node(std::get<bool>(value));
-        }
-        if (std::holds_alternative<Dict>(value)) {
+        } if (std::holds_alternative<Dict>(value)) {
             return Node(std::get<Dict>(value));
-        }
-        if (std::holds_alternative<Array>(value)) {
+        } if (std::holds_alternative<Array>(value)) {
             return Node(std::get<Array>(value));
         }
         return {};
