@@ -39,8 +39,7 @@ namespace json {
         }
         return *this;
     }
-
-   
+     
     DictItemContext Builder::StartDict() {
         auto* top_node = nodes_stack_.back();
         if (top_node->IsDict()) {
@@ -62,8 +61,7 @@ namespace json {
         }
         return DictItemContext(*this);
     }
-
-   
+       
     Builder& Builder::EndDict() {
         auto* top_node = nodes_stack_.back();
         if (!top_node->IsDict()) {
@@ -96,7 +94,7 @@ namespace json {
 
         return ArrayItemContext(*this);
     }
-
+    
     Builder& Builder::EndArray() {
         auto* top_node = nodes_stack_.back();
 
@@ -114,69 +112,76 @@ namespace json {
    
     Node Builder::GetNode(Node::Value value) {
         if (std::holds_alternative<int>(value)) {
-            return Node(std::get<int>(value));
-        } if (std::holds_alternative<double>(value)) {
-            return Node(std::get<double>(value));
-        } if (std::holds_alternative<std::string>(value)) {
-            return Node(std::get<std::string>(value));
-        } if (std::holds_alternative<std::nullptr_t>(value)) {
-            return Node(std::get<std::nullptr_t>(value));
-        } if (std::holds_alternative<bool>(value)) {
-            return Node(std::get<bool>(value));
-        } if (std::holds_alternative<Dict>(value)) {
-            return Node(std::get<Dict>(value));
-        } if (std::holds_alternative<Array>(value)) {
-            return Node(std::get<Array>(value));
+            return Node(std::move(std::get<int>(value)));
+        }
+        else if (std::holds_alternative<double>(value)) {
+            return Node(std::move(std::get<double>(value)));
+        }
+        else if (std::holds_alternative<std::string>(value)) {
+            return Node(std::move(std::get<std::string>(value)));
+        }
+        else if (std::holds_alternative<std::nullptr_t>(value)) {
+            return Node(std::move(std::get<std::nullptr_t>(value)));
+        }
+        else if (std::holds_alternative<bool>(value)) {
+            return Node(std::move(std::get<bool>(value)));
+        }
+        else if (std::holds_alternative<Dict>(value)) {
+            return Node(std::move(std::get<Dict>(value)));
+        }
+        else if (std::holds_alternative<Array>(value)) {
+            return Node(std::move(std::get<Array>(value)));
         }
         return {};
     }
 
-    DictItemContext::DictItemContext(Builder& builder)
-        : b_(builder)
+     DictItemContext::DictItemContext(Builder& builder)
+        : bld_(builder)
     {}
 
     DictKeyContext DictItemContext::Key(std::string key) {
-        return b_.Key(key);
+        return bld_.Key(key);
     }
 
     Builder& DictItemContext::EndDict() {
-        return b_.EndDict();
+        return bld_.EndDict();
     }
   
     ArrayItemContext::ArrayItemContext(Builder& builder)
-        : b_(builder)
+        : bld_(builder)
     {}
 
     ArrayItemContext ArrayItemContext::Value(Node::Value value) {
-        return ArrayItemContext(b_.Value(value));
+        return ArrayItemContext(bld_.Value(value));
     }
 
     DictItemContext ArrayItemContext::StartDict() {
-        return b_.StartDict();
+        return bld_.StartDict();
     }
   
     ArrayItemContext ArrayItemContext::StartArray() {
-        return b_.StartArray();
+        return bld_.StartArray();
     }
 
     Builder& ArrayItemContext::EndArray() {
-        return b_.EndArray();
+        return bld_.EndArray();
     }
 
     DictKeyContext::DictKeyContext(Builder& builder)
-        : b_(builder)
+        : bld_(builder)
     {}
 
     DictItemContext DictKeyContext::Value(Node::Value value) {
-        return DictItemContext(b_.Value(value));
+        return DictItemContext(bld_.Value(value));
     }
 
     ArrayItemContext DictKeyContext::StartArray() {
-        return b_.StartArray();
+        return bld_.StartArray();
     }
 
     DictItemContext DictKeyContext::StartDict() {
-        return b_.StartDict();
+        return bld_.StartDict();
     }
+    
 
 } // namespace json
