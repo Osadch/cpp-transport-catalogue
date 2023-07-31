@@ -31,8 +31,8 @@ namespace json {
         std::vector<Node*> nodes_stack_;
         std::optional<std::string> key_{ std::nullopt };
     };
-
-    class DictItemContext {
+          
+   class DictItemContext {
 
     public:
 
@@ -42,9 +42,8 @@ namespace json {
 
     private:
 
-        Builder& b_;
+        Builder& bld_;
     };
-
 
     class ArrayItemContext {
 
@@ -58,9 +57,8 @@ namespace json {
 
     private:
 
-        Builder& b_;
+        Builder& bld_;
     };
-
 
     class DictKeyContext {
 
@@ -73,7 +71,8 @@ namespace json {
 
     private:
 
-        Builder& b_;
+        Builder& bld_;
     };
+    
 
 } // namespace json
