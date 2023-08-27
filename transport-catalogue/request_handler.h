@@ -1,45 +1,38 @@
-#pragma once
-
-#include "json.h"
-#include "transport_catalogue.h"
 #include "map_renderer.h"
+#include "json_builder.h"
 #include "transport_router.h"
-
-#include <sstream>
-#include <optional>
-
-
- class RequestHandler {
- public:
-     // MapRenderer понадобится в следующей части итогового проекта
-     RequestHandler(const transport::TransportCatalogue& catalogue, const renderer::MapRenderer& renderer, const transport::Router& router)
-         : catalogue_(catalogue)
-         , renderer_(renderer)
-         , router_(router)
-     {
-     }
-
-     // Возвращает информацию о маршруте (запрос Bus)
-     std::optional<transport::BusStat> GetBusStat(const std::string_view bus_number) const;
-     // Возвращает маршруты, проходящие через
-     const std::set<std::string> GetBusesByStop(std::string_view stop_name) const;
-
-     bool IsBusNumber(const std::string_view bus_number) const;
-
-     bool IsStopName(const std::string_view stop_name) const;
-
-     // Этот метод будет нужен в следующей части итогового проекта
-     svg::Document RenderMap() const;
-        
+ 
+using namespace transport_catalogue;
+using namespace map_renderer;
+using namespace transport_catalogue::detail::json;
+using namespace transport_catalogue::detail::json::builder;
+using namespace transport_catalogue::detail::router;
+ 
+namespace request_handler {
+ 
+class RequestHandler {
+public:
+           
+    RequestHandler() = default;
     
-     const std::optional<graph::Router<double>::RouteInfo> GetOptimalRoute(const std::string_view stop_from, const std::string_view stop_to) const;
-     const graph::DirectedWeightedGraph<double>& GetRouterGraph() const;
-
-     
-
- private:
-     // RequestHandler использует агрегацию объектов "Транспортный Справочник" и "Визуализатор Карты"
-     const transport::TransportCatalogue& catalogue_;
-     const renderer::MapRenderer& renderer_;
-     const transport::Router& router_;
- };
+    std::optional<RouteInfo> get_route_info(std::string_view start, std::string_view end, TransportCatalogue& catalogue, 
+                                            TransportRouter& routing) const;    
+    std::vector<geo::Coordinates> get_stops_coordinates(TransportCatalogue& catalogue_) const;
+    std::vector<std::string_view> get_sort_buses_names(TransportCatalogue& catalogue_) const;    
+    BusQueryResult bus_query(TransportCatalogue& catalogue, std::string_view str);
+    StopQueryResult stop_query(TransportCatalogue& catalogue, std::string_view stop_name);    
+    Node execute_make_node_stop(int id_request, const StopQueryResult& query_result);
+    Node execute_make_node_bus(int id_request, const BusQueryResult& query_result);
+    Node execute_make_node_map(int id_request, TransportCatalogue& catalogue, RenderSettings render_settings);
+    Node execute_make_node_route(StatRequest& request, TransportCatalogue& catalogue, TransportRouter& routing);
+    
+    void execute_queries(TransportCatalogue& catalogue, std::vector<StatRequest>& stat_requests, RenderSettings& render_settings,
+                         RoutingSettings& route_settings);    
+    void execute_render_map(MapRenderer& map_catalogue, TransportCatalogue& catalogue_) const;       
+    const Document& get_document();
+ 
+private:
+    Document doc_out;
+};
+    
+}//end namespace request_handler
