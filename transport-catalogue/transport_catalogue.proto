@@ -1,38 +1,30 @@
 syntax = "proto3";
- 
+
+package serialize;
+
 import "map_renderer.proto";
 import "transport_router.proto";
- 
-package transport_catalogue_protobuf;
- 
+
 message Stop {
-    uint32 id_ = 1;
-    string name_ = 2;
-    double latitude_ = 3;
-    double longitude_ = 4;
-}
- 
-message Bus {
+
     string name = 1;
-    repeated uint32 stops = 2;
-    bool is_roundtrip = 3;  
-    uint32 route_length = 4;
+    repeated double coordinate = 2;
+    repeated string near_stop = 3;
+    repeated int32 distance = 4;
 }
- 
-message Distance {
-    uint32 start = 1;
-    uint32 end = 2;
-    uint32 distance = 3;
+
+message Bus {
+
+    string name = 1;
+    repeated string stop = 2;
+    bool is_circle = 3;
+    string final_stop = 4;
 }
- 
+
 message TransportCatalogue {
-    repeated Stop stops = 1;
-    repeated Bus buses = 2;
-    repeated Distance distances = 3;
-}
- 
-message Catalogue {
-    TransportCatalogue transport_catalogue = 1;
-    RenderSettings render_settings = 2;
-    RoutingSettings routing_settings = 3;
+
+    repeated Stop stop = 1;
+    repeated Bus bus = 2;
+    RenderSettings render_settings = 3;
+    Router router = 4;
 }
