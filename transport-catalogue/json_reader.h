@@ -1,48 +1,42 @@
 #pragma once
-
 #include "json.h"
+#include "serialization.h"
 #include "transport_catalogue.h"
 #include "map_renderer.h"
-#include "request_handler.h"
-
-#include <iostream>
-
-
-enum ColorType {
-    RGB = 3,
-    RGBA = 4
-};
-
-class JsonReader {
-public:
-
-    JsonReader(std::istream& input)
-        : input_(json::Load(input))
-    {}
-
-    const json::Node& GetBaseRequests() const;
-    const json::Node& GetStatRequests() const;
-    const json::Node& GetRenderSettings() const;
-    const json::Node& GetRoutingSettings() const;
-        
-    void ProcessRequests(const json::Node& stat_requests, RequestHandler& rh) const;
-
-    void FillCatalogue(transport::TransportCatalogue& catalogue);
-    renderer::MapRenderer FillRenderSettings(const json::Node& settings) const;
-    transport::Router FillRoutingSettings(const json::Node& settings) const;
-
-    const json::Node PrintRoute(const json::Dict& request_map, RequestHandler& rh) const;
-    const json::Node PrintStop(const json::Dict& request_map, RequestHandler& rh) const;
-    const json::Node PrintMap(const json::Dict& request_map, RequestHandler& rh) const;
-    const json::Node PrintRouting(const json::Dict& request_map, RequestHandler& rh) const;
-
-private:
-
-    json::Document input_;
-    json::Node dummy_ = nullptr;
-         
-    std::tuple<std::string_view, geo::Coordinates, std::map<std::string_view, int>> FillStop(const json::Dict& request_map) const;
-    void FillStopDistances(transport::TransportCatalogue& catalogue) const;
-    std::tuple<std::string_view, std::vector<const transport::Stop*>, bool> FillRoute(const json::Dict& request_map, transport::TransportCatalogue& catalogue) const;
+#include "transport_router.h"
+ 
+namespace transport_catalogue {
+namespace detail {
+namespace json {
     
+class JSONReader{
+public:
+    JSONReader() = default;    
+    JSONReader(Document doc);
+    JSONReader(std::istream& input);
+    
+    void parse_node_base(const Node& root, TransportCatalogue& catalogue);
+    void parse_node_stat(const Node& root, std::vector<StatRequest>& stat_request);
+    void parse_node_render(const Node& node, map_renderer::RenderSettings& render_settings);
+    void parse_node_routing(const Node& node, router::RoutingSettings& route_set);
+    void parse_node_serialization(const Node& node, serialization::SerializationSettings& serialization_set);    
+    void parse_node_make_base(TransportCatalogue& catalogue, 
+                              map_renderer::RenderSettings& render_settings, 
+                              router::RoutingSettings& routing_settings,
+                              serialization::SerializationSettings& serialization_settings);    
+    void parse_node_process_requests(std::vector<StatRequest>& stat_request,
+                                     serialization::SerializationSettings& serialization_settings);
+    
+    Stop parse_node_stop(Node& node);
+    Bus parse_node_bus(Node& node, TransportCatalogue& catalogue);
+    std::vector<Distance> parse_node_distances(Node& node, TransportCatalogue& catalogue);
+    
+    const Document& get_document() const;
+    
+private:
+    Document document_;
 };
+    
+}//end namespace json
+}//end namespace detail
+}//end namespace transport_catalogue
