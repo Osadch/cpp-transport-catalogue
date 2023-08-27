@@ -1,78 +1,79 @@
 #pragma once
-
+ 
 #include "json.h"
-
-#include <optional>
-
+#include <stack>
+#include <string>
+#include <memory>
+ 
+namespace transport_catalogue {
+namespace detail {
 namespace json {
-
-    // Создание классов контекстов для более удобного построения JSON-объекта
-    class DictItemContext;
-    class ArrayItemContext;
-    class DictKeyContext;
+namespace builder {
+ 
+// Создание классов контекстов для более удобного построения JSON-объекта    
+class KeyContext;
+class DictionaryContext;
+class ArrayContext;
+ 
+class Builder {
+public:
+    Node make_node(const Node::Value& value_); // для получения узла JSON-дерева из значения
+    void add_node(const Node& node); 
+    KeyContext key(const std::string& key_); // для начала создания ключа в словаре
+    Builder& value(const Node::Value& value); // для задания значения   
+    DictionaryContext start_dict(); // для начала создания словаря
+    Builder& end_dict(); // для конца создания словаря   
+    ArrayContext start_array(); // для начала создания массива
+    Builder& end_array(); // для конца создания массива
+    Node build(); // для построения и получения узла JSON-дерева
     
-    class Builder {
-
-    public:
-
-        Builder(); 
-        DictKeyContext Key(std::string key); // для начала создания ключа в словаре
-        Builder& Value(Node::Value value); // для задания значения
-        DictItemContext StartDict(); // для начала создания словаря
-        Builder& EndDict(); // для конца создания словаря
-        ArrayItemContext StartArray(); // для начала создания массива
-        Builder& EndArray(); // для конца создания массива
-        Node Build(); // для построения и получения узла JSON-дерева
-        Node GetNode(Node::Value value); // для получения узла JSON-дерева из значения
-
-    private:
-
-        Node root_{ nullptr };
-        std::vector<Node*> nodes_stack_;
-        std::optional<std::string> key_{ std::nullopt };
-    };
-          
-   class DictItemContext {
-
-    public:
-
-        DictItemContext(Builder& builder);
-        DictKeyContext Key(std::string key); // для начала создания ключа в словаре
-        Builder& EndDict(); // для завершения создания словаря
-
-    private:
-
-        Builder& bld_;
-    };
-
-    class ArrayItemContext {
-
-    public:
-
-        ArrayItemContext(Builder& builder);
-        ArrayItemContext Value(Node::Value value); // для задания значения в массиве
-        DictItemContext StartDict(); // для начала создания словаря в массиве
-        Builder& EndArray(); // для завершения создания массива
-        ArrayItemContext StartArray(); // для начала создания массива в массиве
-
-    private:
-
-        Builder& bld_;
-    };
-
-    class DictKeyContext {
-
-    public:
-
-        DictKeyContext(Builder& builder);
-        DictItemContext Value(Node::Value value); // для задания значения в словаре
-        ArrayItemContext StartArray(); // для начала создания массива в словаре
-        DictItemContext StartDict(); // для начала создания словаря в словаре
-
-    private:
-
-        Builder& bld_;
-    };
-    
-
-} // namespace json
+ 
+private:
+    Node root_;
+    std::vector<std::unique_ptr<Node>> nodes_stack_;
+};
+ /* Класс `BaseContext` является базовым классом для классов `KeyContext`, `DictionaryContext` и `ArrayContext`. Вся функциональность этих классов тут */
+class BaseContext {
+public:
+    BaseContext(Builder& builder); // конструктор принимает ссылку на объект `Builder`  
+    KeyContext key(const std::string& key); // для задания ключа в качестве имени следующего элемента
+    Builder& value(const Node::Value& value);  // для задания значения следующего элемента  
+    DictionaryContext start_dict(); // для начала создания словаря в массиве
+    Builder& end_dict(); // для завершения создания словаря   
+    ArrayContext start_array(); // для начала создания массива в массиве
+    Builder& end_array(); // для завершения создания массива    
+  
+protected:
+    Builder& builder_;
+};
+ 
+class KeyContext : public BaseContext {
+public:
+    KeyContext(Builder& builder); // принимается ссылка на объект `Builder`
+    KeyContext key(const std::string& key) = delete; // удаление из класса
+    BaseContext end_dict() = delete;
+    BaseContext end_array() = delete; 
+    DictionaryContext value(const Node::Value& value); // для задания значения следующего элемента в словаре
+};
+ 
+class DictionaryContext : public BaseContext {
+public:
+    DictionaryContext(Builder& builder); // принимается ссылка на объект `Builder`
+    DictionaryContext start_dict() = delete; 
+    ArrayContext start_array() = delete;
+    Builder& end_array() = delete; 
+    Builder& value(const Node::Value& value) = delete; // для задания значения следующего элемента
+};
+ 
+class ArrayContext : public BaseContext {
+public:
+    ArrayContext(Builder& builder); // принимается ссылка на объект `Builder`
+    KeyContext key(const std::string& key) = delete; // удаление из класса
+    Builder& end_dict() = delete; 
+    ArrayContext value(const Node::Value& value); // для задания значения следующего элемента
+};
+ 
+}//end namespace builder
+}//end namespace json
+}//end namespace detail
+}//end namespace transport_catalogue
