@@ -1,42 +1,45 @@
 #pragma once
+
 #include "json.h"
-#include "serialization.h"
+
 #include "transport_catalogue.h"
-#include "map_renderer.h"
-#include "transport_router.h"
- 
-namespace transport_catalogue {
-namespace detail {
-namespace json {
-    
-class JSONReader{
+#include "domain.h"
+
+#include <unordered_map>
+#include <string>
+#include <string_view>
+#include <vector>
+
+class JsonReader {
 public:
-    JSONReader() = default;    
-    JSONReader(Document doc);
-    JSONReader(std::istream& input);
-    
-    void parse_node_base(const Node& root, TransportCatalogue& catalogue);
-    void parse_node_stat(const Node& root, std::vector<StatRequest>& stat_request);
-    void parse_node_render(const Node& node, map_renderer::RenderSettings& render_settings);
-    void parse_node_routing(const Node& node, router::RoutingSettings& route_set);
-    void parse_node_serialization(const Node& node, serialization::SerializationSettings& serialization_set);    
-    void parse_node_make_base(TransportCatalogue& catalogue, 
-                              map_renderer::RenderSettings& render_settings, 
-                              router::RoutingSettings& routing_settings,
-                              serialization::SerializationSettings& serialization_settings);    
-    void parse_node_process_requests(std::vector<StatRequest>& stat_request,
-                                     serialization::SerializationSettings& serialization_settings);
-    
-    Stop parse_node_stop(Node& node);
-    Bus parse_node_bus(Node& node, TransportCatalogue& catalogue);
-    std::vector<Distance> parse_node_distances(Node& node, TransportCatalogue& catalogue);
-    
-    const Document& get_document() const;
-    
+    JsonReader(json::Document input_json)
+        : input_(input_json) {}
+
+    const json::Node& GetBaseRequest() const;
+    const json::Node& GetStatRequest() const;
+    const json::Node& GetRenderSettings() const;
+    const json::Node& GetRoutingSettings() const;
+    const json::Node& GetSerializationSettings() const;
+    void FillCatalogue(transport::Catalogue& catalogue) const;
+
 private:
-    Document document_;
+    json::Document input_;
+    json::Node dumm_{ nullptr };
+
+    struct Bus_info {
+        std::vector<std::string_view> stops;
+        std::string_view final_stop;
+        bool is_circle;
+    };
+
+    using StopsDistMap = std::unordered_map<std::string_view, std::unordered_map<std::string_view, int>>;
+    using BusesInfoMap = std::unordered_map<std::string_view, Bus_info>;
+
+    void ParseStopAddRequest(transport::Catalogue& catalogue, const json::Dict& request_map,
+        StopsDistMap& stop_to_stops_distance) const;
+    void SetStopsDistances(transport::Catalogue& catalogue,
+        const StopsDistMap& stop_to_stops_distance) const;
+    void ParseBusAddRequest(const json::Dict& request_map, BusesInfoMap& buses_info) const;
+    void BusesAddProcess(transport::Catalogue& catalogue, const BusesInfoMap& buses_info) const;
+    void SetFinals(transport::Catalogue& catalogue, const BusesInfoMap& buses_info) const;
 };
-    
-}//end namespace json
-}//end namespace detail
-}//end namespace transport_catalogue
