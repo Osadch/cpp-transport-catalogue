@@ -1,60 +1,58 @@
+#include "transport_catalogue.h"
+#include "request_handler.h"
+#include "json_reader.h"
+#include "json.h"
+#include "geo.h"
+#include "map_renderer.h"
+#include "transport_router.h"
+#include "serialization.h"
+
+#include <transport_catalogue.pb.h>
+
 #include <fstream>
 #include <iostream>
- 
-#include "json_reader.h"
-#include "request_handler.h"
- 
-using namespace std;
- 
-using namespace serialization;
-using namespace transport_catalogue;
-using namespace transport_catalogue::detail::json;
-using namespace transport_catalogue::detail::router; 
-using namespace request_handler;
-using namespace map_renderer;
+#include <string>
+#include <string_view>
+#include <utility>
 
- 
+using namespace std::literals;
+
 void PrintUsage(std::ostream& stream = std::cerr) {
     stream << "Usage: transport_catalogue [make_base|process_requests]\n"sv;
 }
- 
+
 int main(int argc, char* argv[]) {
-    
     if (argc != 2) {
         PrintUsage();
         return 1;
     }
- 
-    const std::string_view mode(argv[1]);    
-    TransportCatalogue transport_catalogue;     
-    RenderSettings render_settings;
-    RoutingSettings routing_settings;    
-    SerializationSettings serialization_settings;    
-    JSONReader json_reader;
-    vector<StatRequest> stat_request;   
-    
+
+    const std::string_view mode(argv[1]);
+
     if (mode == "make_base"sv) {
-        
-        // make base here        
-        json_reader = JSONReader(cin); // считывается JSON - структура        
-        json_reader.parse_node_make_base(transport_catalogue, render_settings, routing_settings, serialization_settings); // парсится
-        ofstream out_file(serialization_settings.file_name, ios::binary);         
-        catalogue_serialization(transport_catalogue, render_settings, routing_settings, out_file); // результаты парсинга сериализуются
-        
-    } else if (mode == "process_requests"sv) {
-        
-        // process requests here
-        json_reader = JSONReader(cin);        
-        json_reader.parse_node_process_requests(stat_request, serialization_settings);        
-        ifstream in_file(serialization_settings.file_name, ios::binary);         
-        Catalogue catalogue = catalogue_deserialization(in_file);  // десериализует данные `serialization_settings.file_name          
-        RequestHandler request_handler;
-        request_handler.execute_queries(catalogue.transport_catalogue_, stat_request, catalogue.render_settings_,
-                                        catalogue.routing_settings_);  // передаются данные 
-        
-        print(request_handler.get_document(), cout); 
-        
-    } else {
+        JsonReader input_json(json::Load(std::cin));
+        transport::Catalogue tcat;
+        input_json.FillCatalogue(tcat);
+        renderer::MapRenderer renderer(input_json.GetRenderSettings());
+        transport::Router router(input_json.GetRoutingSettings(), tcat);
+        std::ofstream fout(input_json.GetSerializationSettings().AsDict().at("file"s).AsString(), std::ios::binary);
+        if (fout.is_open()) {
+            Serialize(tcat, renderer, router, fout);
+        }
+    }
+
+    else if (mode == "process_requests"sv) {
+        JsonReader input_json(json::Load(std::cin));
+        std::ifstream db_file(input_json.GetSerializationSettings().AsDict().at("file"s).AsString(), std::ios::binary);
+        if (db_file) {
+            auto [tcat, renderer, router, graph, stop_ids] = Deserialize(db_file);
+            router.SetGraph(std::move(graph), std::move(stop_ids));
+            RequestHandler handler(tcat, router, renderer);
+            handler.JsonStatRequests(input_json.GetStatRequest(), std::cout);
+        }
+    }
+
+    else {
         PrintUsage();
         return 1;
     }
