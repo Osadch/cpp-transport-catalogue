@@ -1,271 +1,278 @@
 #include "serialization.h"
 
 using namespace std;
- 
-namespace serialization {
-    
-template <typename It>
-uint32_t calculate_id(It start, It end, string_view name) {
- 
-    auto stop_it = find_if(start, end, [&name](const domain::Stop stop) {
-    return stop.name == name; // 0
-    });
-    return distance(start, stop_it); // позиция найденного элемента относительно начала диапазона
-}
- 
-transport_catalogue_protobuf::TransportCatalogue transport_catalogue_serialization(const transport_catalogue::TransportCatalogue& transport_catalogue) {
-    
-    transport_catalogue_protobuf::TransportCatalogue transport_catalogue_proto; 
-    const auto& stops = transport_catalogue.get_stops(); //  создаются объекты:
-    const auto& buses = transport_catalogue.get_buses();
-    const auto& distances = transport_catalogue.get_distance();
-    
-    int id = 0;
-    for (const auto& stop : stops) {
- 
-        transport_catalogue_protobuf::Stop stop_proto; 
-        stop_proto.set_id_(id);
-        stop_proto.set_name_(stop.name);
-        stop_proto.set_latitude_(stop.latitude);
-        stop_proto.set_longitude_(stop.longitude);        
-        *transport_catalogue_proto.add_stops() = move(stop_proto); // добавляется в список остановок       
-        ++id;
+
+void Serialize(const transport::Catalogue& tcat,
+    const renderer::MapRenderer& renderer, const transport::Router& router,
+    std::ostream& output) {
+    serialize::TransportCatalogue database;
+    for (const auto& [name, s] : tcat.GetSortedAllStops()) {
+        *database.add_stop() = Serialize(s);
     }
- 
-    for (const auto& bus : buses) {
- 
-        transport_catalogue_protobuf::Bus bus_proto; 
-        bus_proto.set_name(bus.name);
- 
-        for (auto stop : bus.stops) {
-            uint32_t stop_id = calculate_id(stops.cbegin(), 
-                                            stops.cend(), 
-                                            stop->name);
-            bus_proto.add_stops(stop_id); // вычисляется идентификационный номер
+    for (const auto& [name, b] : tcat.GetSortedAllBuses()) {
+        *database.add_bus() = Serialize(b);
+    }
+    *database.mutable_render_settings() = GetRenderSettingSerialize(renderer.GetRenderSettings());
+    *database.mutable_router() = Serialize(router);
+    database.SerializeToOstream(&output);
+}
+
+serialize::Stop Serialize(const transport::Stop* stop) {
+    serialize::Stop result;
+    result.set_name(stop->name);
+    result.add_coordinate(stop->coordinates.lat);
+    result.add_coordinate(stop->coordinates.lng);
+    for (const auto& [n, d] : stop->stop_distances) {
+        result.add_near_stop(static_cast<string>(n));
+        result.add_distance(d);
+    }
+
+    return result;
+}
+
+serialize::Bus Serialize(const transport::Bus* bus) {
+    serialize::Bus result;
+    result.set_name(bus->name);
+    for (const auto& s : bus->stops) {
+        result.add_stop(s->name);
+    }
+    result.set_is_circle(bus->is_circle);
+    if (bus->final_stop)
+        result.set_final_stop(bus->final_stop->name);
+    return result;
+}
+
+serialize::Point GetPointSerialize(const json::Array& p) {
+    serialize::Point result;
+    result.set_x(p[0].AsDouble());
+    result.set_y(p[1].AsDouble());
+    return result;
+}
+
+serialize::Color GetColorSerialize(const json::Node& node) {
+    serialize::Color result;
+    if (node.IsArray()) {
+        const json::Array& arr = node.AsArray();
+        if (arr.size() == 3) {
+            serialize::RGB rgb;
+            rgb.set_red(arr[0].AsInt());
+            rgb.set_green(arr[1].AsInt());
+            rgb.set_blue(arr[2].AsInt());
+            *result.mutable_rgb() = rgb;
         }
- 
-        bus_proto.set_is_roundtrip(bus.is_roundtrip); // круговой маршрут автобуса
-        bus_proto.set_route_length(bus.route_length); // длина маршрута
-        *transport_catalogue_proto.add_buses() = move(bus_proto); // добавляется в список автобусов
+        else if (arr.size() == 4) {
+            serialize::RGBA rgba;
+            rgba.set_red(arr[0].AsInt());
+            rgba.set_green(arr[1].AsInt());
+            rgba.set_blue(arr[2].AsInt());
+            rgba.set_opacity(arr[3].AsDouble());
+            *result.mutable_rgba() = rgba;
+        }
     }
-    // цикл по парам остановок и расстояниям из списка
-    for (const auto& [pair_stops, pair_distance] : distances) {
- 
-        transport_catalogue_protobuf::Distance distance_proto; 
-        distance_proto.set_start(calculate_id(stops.cbegin(), 
-                                              stops.cend(), 
-                                              pair_stops.first->name));                                                  distance_proto.set_end(calculate_id(stops.cbegin(), 
-                                            stops.cend(), 
-                                            pair_stops.second->name));                                                    distance_proto.set_distance(pair_distance); 
-        *transport_catalogue_proto.add_distances() = move(distance_proto); // добавляется в список расстояний
-    } 
-    return transport_catalogue_proto;
-}
- // 1
-    
-transport_catalogue::TransportCatalogue transport_catalogue_deserialization(const transport_catalogue_protobuf::TransportCatalogue& transport_catalogue_proto) {
- 
-    transport_catalogue::TransportCatalogue transport_catalogue;    
-    const auto& stops_proto = transport_catalogue_proto.stops(); // списки остановок, автобусов и расстояний
-    const auto& buses_proto = transport_catalogue_proto.buses();
-    const auto& distances_proto = transport_catalogue_proto.distances();
-    
-    for (const auto& stop : stops_proto) {
-        
-        domain::Stop tc_stop; //создается объект         
-        tc_stop.name = stop.name_(); // запись данных:
-        tc_stop.latitude = stop.latitude_();
-        tc_stop.longitude = stop.longitude_();        
-        transport_catalogue.add_stop(move(tc_stop)); // добавляется в список остановок
+    else if (node.IsString()) {
+        result.set_name(node.AsString());
     }
-    
-    const auto& tc_stops = transport_catalogue.get_stops(); 
-    
-    vector<domain::Distance> distances; // для десериализации списка расстояний
-    for (const auto& distance : distances_proto) {
-        
-        domain::Distance tc_distance;        
-        tc_distance.start = transport_catalogue.get_stop(tc_stops[distance.start()].name);
-        tc_distance.end = transport_catalogue.get_stop(tc_stops[distance.end()].name);        
-        tc_distance.distance = distance.distance();        
-        distances.push_back(tc_distance); // добавляется в вектор
+
+    return result;
+}
+
+serialize::RenderSettings GetRenderSettingSerialize(const json::Node& render_settings) {
+    const json::Dict& rs_map = render_settings.AsDict();
+    serialize::RenderSettings result;
+    result.set_width(rs_map.at("width"s).AsDouble());
+    result.set_height(rs_map.at("height"s).AsDouble());
+    result.set_padding(rs_map.at("padding"s).AsDouble());
+    result.set_stop_radius(rs_map.at("stop_radius"s).AsDouble());
+    result.set_line_width(rs_map.at("line_width"s).AsDouble());
+    result.set_bus_label_font_size(rs_map.at("bus_label_font_size"s).AsInt());
+    *result.mutable_bus_label_offset() = GetPointSerialize(rs_map.at("bus_label_offset"s).AsArray());
+    result.set_stop_label_font_size(rs_map.at("stop_label_font_size"s).AsInt());
+    *result.mutable_stop_label_offset() = GetPointSerialize(rs_map.at("stop_label_offset"s).AsArray());
+    *result.mutable_underlayer_color() = GetColorSerialize(rs_map.at("underlayer_color"s));
+    result.set_underlayer_width(rs_map.at("underlayer_width"s).AsDouble());
+    for (const auto& c : rs_map.at("color_palette"s).AsArray()) {
+        *result.add_color_palette() = GetColorSerialize(c);
     }
-    
-    transport_catalogue.add_distance(distances); // добавляется в `transport_catalogue`      
-    
-    for (const auto& bus_proto : buses_proto) {  
-    
-        domain::Bus tc_bus;        
-        tc_bus.name = bus_proto.name(); // записывается имя автобуса
- 
-        for (auto stop_id : bus_proto.stops()) {
-            auto name = tc_stops[stop_id].name;            
-            tc_bus.stops.push_back(transport_catalogue.get_stop(name));
-        } 
-        tc_bus.is_roundtrip = bus_proto.is_roundtrip();
-        tc_bus.route_length = bus_proto.route_length();        
-        transport_catalogue.add_bus(move(tc_bus)); // добавляется в список автобусов
-    } 
-     return transport_catalogue;
+
+    return result;
 }
- //  2 
-transport_catalogue_protobuf::Color color_serialization(const svg::Color& tc_color) {
-    
-    transport_catalogue_protobuf::Color color_proto; // будут записываться данные сериализации
-    
-    if (holds_alternative<monostate>(tc_color)) { // проверяет тип
-        color_proto.set_none(true); 
-        
-    } else if (holds_alternative<svg::Rgb>(tc_color)) { // извлекаются значения цветов
-        svg::Rgb rgb = get<svg::Rgb>(tc_color);        
-        color_proto.mutable_rgb()->set_red_(rgb.red_);
-        color_proto.mutable_rgb()->set_green_(rgb.green_);
-        color_proto.mutable_rgb()->set_blue_(rgb.blue_);
-        
-    } else if (holds_alternative<svg::Rgba>(tc_color)) { // извлекаются значения цветов и прозрачности
-        svg::Rgba rgba = std::get<svg::Rgba>(tc_color);        
-        color_proto.mutable_rgba()->set_red_(rgba.red_);
-        color_proto.mutable_rgba()->set_green_(rgba.green_);
-        color_proto.mutable_rgba()->set_blue_(rgba.blue_);
-        color_proto.mutable_rgba()->set_opacity_(rgba.opacity_);
-        
-    } else if (holds_alternative<string>(tc_color)) {
-        color_proto.set_string_color(get<string>(tc_color)); // записывается в виде строки
+
+serialize::RouterSettings GetRouterSettingSerialize(const json::Node& router_settings) {
+    const json::Dict& rs_map = router_settings.AsDict();
+    serialize::RouterSettings result;
+    result.set_bus_wait_time(rs_map.at("bus_wait_time"s).AsInt());
+    result.set_bus_velocity(rs_map.at("bus_velocity"s).AsDouble());
+    return result;
+}
+
+serialize::Graph GetGraphSerialize(const graph::DirectedWeightedGraph<double>& g) {
+    serialize::Graph result;
+    size_t vertex_count = g.GetVertexCount();
+    size_t edge_count = g.GetEdgeCount();
+    for (size_t i = 0; i < edge_count; ++i) {
+        const graph::Edge<double>& edge = g.GetEdge(i);
+        serialize::Edge s_edge;
+        s_edge.set_name(edge.name);
+        s_edge.set_quality(edge.quality);
+        s_edge.set_from(edge.from);
+        s_edge.set_to(edge.to);
+        s_edge.set_weight(edge.weight);
+        *result.add_edge() = s_edge;
     }
-    
-    return color_proto;
-}
- 
-svg::Color color_deserialization(const transport_catalogue_protobuf::Color& color_proto) {
-    
-    svg::Color color;
-    
-    if (color_proto.has_rgb()) { // извлекаются цветa и записываются
-        svg::Rgb rgb;        
-        rgb.red_ = color_proto.rgb().red_();
-        rgb.green_ = color_proto.rgb().green_();
-        rgb.blue_ = color_proto.rgb().blue_();        
-        color = rgb;
-        
-    } else if (color_proto.has_rgba()) { // извлекаются цветa и прозрачности и записываются
-        svg::Rgba rgba;        
-        rgba.red_ = color_proto.rgba().red_();
-        rgba.green_ = color_proto.rgba().green_();
-        rgba.blue_ = color_proto.rgba().blue_();
-        rgba.opacity_ = color_proto.rgba().opacity_();        
-        color = rgba;
-        
-    } else {color = color_proto.string_color();}    
-    return color;
-}
- // 3   
-transport_catalogue_protobuf::RenderSettings render_settings_serialization(const map_renderer::RenderSettings& render_settings) { // преобразует объект 
-    
-    transport_catalogue_protobuf::RenderSettings render_settings_proto; // Создается объект
-    // поля из объекта копируются в соответствующие поля     
-    render_settings_proto.set_height_(render_settings.height_);
-    render_settings_proto.set_padding_(render_settings.padding_);
-    render_settings_proto.set_line_width_(render_settings.line_width_);
-    render_settings_proto.set_stop_radius_(render_settings.stop_radius_);
-    render_settings_proto.set_bus_label_font_size_(render_settings.bus_label_font_size_); 
-    //  Создается объект и ему присваиваются значения из поля
-    transport_catalogue_protobuf::Point bus_label_offset_proto;
-    // Перемещением объекта происходит копирование значений координат `x` и `y`
-    bus_label_offset_proto.set_x(render_settings.bus_label_offset_.first);
-    bus_label_offset_proto.set_y(render_settings.bus_label_offset_.second);    
-    *render_settings_proto.mutable_bus_label_offset_() = move(bus_label_offset_proto);
-    // аналогичным образом записываются соответствующие значения в объекте
-    render_settings_proto.set_stop_label_font_size_(render_settings.stop_label_font_size_); 
-    transport_catalogue_protobuf::Point stop_label_offset_proto;
-    stop_label_offset_proto.set_x(render_settings.stop_label_offset_.first);
-    stop_label_offset_proto.set_y(render_settings.stop_label_offset_.second);    
-    *render_settings_proto.mutable_stop_label_offset_() = move(stop_label_offset_proto);
-    *render_settings_proto.mutable_underlayer_color_() = move(color_serialization(render_settings.underlayer_color_));
-    render_settings_proto.set_underlayer_width_(render_settings.underlayer_width_);
-    
-    const auto& colors = render_settings.color_palette_;
-    for (const auto& color : colors) {
-        *render_settings_proto.add_color_palette_() = move(color_serialization(color));
+    for (size_t i = 0; i < vertex_count; ++i) {
+        serialize::Vertex vertex;
+        for (const auto& edge_id : g.GetIncidentEdges(i)) {
+            vertex.add_edge_id(edge_id);
+        }
+        *result.add_vertex() = vertex;
     }
- 
-    return render_settings_proto;
+
+    return result;
 }
-  // 4  
-map_renderer::RenderSettings render_settings_deserialization(const transport_catalogue_protobuf::RenderSettings& render_settings_proto) {
-    
-    map_renderer::RenderSettings render_settings; // Создается объект
-    // копируются в соответствующие поля
-    render_settings.width_ = render_settings_proto.width_();
-    render_settings.height_ = render_settings_proto.height_();
-    render_settings.padding_ = render_settings_proto.padding_();
-    render_settings.line_width_ = render_settings_proto.line_width_();
-    render_settings.stop_radius_ = render_settings_proto.stop_radius_();
-    render_settings.bus_label_font_size_ = render_settings_proto.bus_label_font_size_();    
-    render_settings.bus_label_offset_.first = render_settings_proto.bus_label_offset_().x();
-    render_settings.bus_label_offset_.second = render_settings_proto.bus_label_offset_().y();    
-    render_settings.stop_label_font_size_ = render_settings_proto.stop_label_font_size_();    
-    render_settings.stop_label_offset_.first = render_settings_proto.stop_label_offset_().x();
-    render_settings.stop_label_offset_.second = render_settings_proto.stop_label_offset_().y();
-    // вызов функции для преобразования строки
-    render_settings.underlayer_color_ = color_deserialization(render_settings_proto.underlayer_color_());
-    render_settings.underlayer_width_ = render_settings_proto.underlayer_width_();
-    
-    for (const auto& color_proto : render_settings_proto.color_palette_()) {  // итерация по списку
-        render_settings.color_palette_.push_back(color_deserialization(color_proto));
-    }    
-    return render_settings;
-} 
- // 5
-transport_catalogue_protobuf::RoutingSettings routing_settings_serialization(const domain::RoutingSettings& routing_settings) {
- 
-    transport_catalogue_protobuf::RoutingSettings routing_settings_proto; // Создается объект
-    // Значения полей копируются в соответствующие поля объекта proto
-    routing_settings_proto.set_bus_wait_time(routing_settings.bus_wait_time);
-    routing_settings_proto.set_bus_velocity(routing_settings.bus_velocity);
- 
-    return routing_settings_proto;
-}
-    
-domain::RoutingSettings routing_settings_deserialization(const transport_catalogue_protobuf::RoutingSettings& routing_settings_proto) {
-    
-    domain::RoutingSettings routing_settings;
-    // Значения полей из объекта proto копируются в соответствующие поля 
-    routing_settings.bus_wait_time = routing_settings_proto.bus_wait_time();
-    routing_settings.bus_velocity = routing_settings_proto.bus_velocity();
-    
-    return routing_settings;
-}
- // сериализацию объектов в прото и записывает его в поток   
-void catalogue_serialization(const transport_catalogue::TransportCatalogue& transport_catalogue, 
-                             const map_renderer::RenderSettings& render_settings, 
-                             const domain::RoutingSettings& routing_settings, 
-                             ostream& out) {
-    
-    transport_catalogue_protobuf::Catalogue catalogue_proto;
- // выполняется сериализация объектов 
-    transport_catalogue_protobuf::TransportCatalogue transport_catalogue_proto = transport_catalogue_serialization(transport_catalogue);
-    transport_catalogue_protobuf::RenderSettings render_settings_proto = render_settings_serialization(render_settings);
-    transport_catalogue_protobuf::RoutingSettings routing_settings_proto = routing_settings_serialization(routing_settings);
- // прото перемещаются в соответствующие поля объекта 
-    *catalogue_proto.mutable_transport_catalogue() = move(transport_catalogue_proto);
-    *catalogue_proto.mutable_render_settings() = move(render_settings_proto);
-    *catalogue_proto.mutable_routing_settings() = move(routing_settings_proto);
-    // запись сериализованных данных в поток
-    catalogue_proto.SerializePartialToOstream(&out); 
-}
- // выполняет десериализацию объекта из потока   
-Catalogue catalogue_deserialization(istream& in) {
-    
-    transport_catalogue_protobuf::Catalogue catalogue_proto;
-    auto success_parsing_catalogue_from_istream = catalogue_proto.ParseFromIstream(&in);
-    
-    if (!success_parsing_catalogue_from_istream) {
-        throw runtime_error("cannot parse serialized file from istream");
+
+serialize::Router Serialize(const transport::Router& router) {
+    serialize::Router result;
+    *result.mutable_router_settings() = GetRouterSettingSerialize(router.GetSettings());
+    *result.mutable_graph() = GetGraphSerialize(router.GetGraph());
+    for (const auto& [n, id] : router.GetStopIds()) {
+        serialize::StopId si;
+        si.set_name(n);
+        si.set_id(id);
+        *result.add_stop_id() = si;
     }
-    
-    return {transport_catalogue_deserialization(catalogue_proto.transport_catalogue()),
-            render_settings_deserialization(catalogue_proto.render_settings()),
-            routing_settings_deserialization(catalogue_proto.routing_settings())};
+
+    return result;
 }
-    
-}//end namespace serialization
+
+void SetStopsDistances(transport::Catalogue& tcat, const serialize::TransportCatalogue& database) {
+    for (size_t i = 0; i < database.stop_size(); ++i) {
+        const serialize::Stop& stop_i = database.stop(i);
+        transport::Stop* from = tcat.FindStop(stop_i.name());
+        for (size_t j = 0; j < stop_i.near_stop_size(); ++j) {
+            tcat.SetDistance(from, tcat.FindStop(stop_i.near_stop(j)), stop_i.distance(j));
+        }
+    }
+}
+
+void AddStopFromDB(transport::Catalogue& tcat, const serialize::TransportCatalogue& database) {
+    for (size_t i = 0; i < database.stop_size(); ++i) {
+        const serialize::Stop& stop_i = database.stop(i);
+        tcat.AddStop(stop_i.name(), { stop_i.coordinate(0), stop_i.coordinate(1) });
+    }
+    SetStopsDistances(tcat, database);
+}
+
+void AddBusFromDB(transport::Catalogue& tcat, const serialize::TransportCatalogue& database) {
+    for (size_t i = 0; i < database.bus_size(); ++i) {
+        const serialize::Bus& bus_i = database.bus(i);
+        std::vector<transport::Stop*> stops(bus_i.stop_size());
+        for (size_t j = 0; j < stops.size(); ++j) {
+            stops[j] = tcat.FindStop(bus_i.stop(j));
+        }
+        tcat.AddBus(bus_i.name(), stops, bus_i.is_circle());
+        if (!bus_i.final_stop().empty()) {
+            transport::Bus* bus = tcat.FindBus(bus_i.name());
+            bus->final_stop = tcat.FindStop(bus_i.final_stop());
+        }
+    }
+}
+
+json::Node ToNode(const serialize::Point& p) {
+    return json::Node(json::Array{ {p.x()}, {p.y()} });
+}
+
+json::Node ToNode(const serialize::Color& c) {
+    if (!c.name().empty()) {
+        return json::Node(c.name());
+    }
+    else if (c.has_rgb()) {
+        const serialize::RGB& rgb = c.rgb();
+        return json::Node(json::Array{ {rgb.red()}, {rgb.green()}, {rgb.blue()} });
+    }
+    else if (c.has_rgba()) {
+        const serialize::RGBA& rgba = c.rgba();
+        return json::Node(json::Array{ {rgba.red()}, {rgba.green()}, {rgba.blue()}, {rgba.opacity()} });
+    }
+    else
+        return json::Node("none"s);
+}
+
+json::Node ToNode(const google::protobuf::RepeatedPtrField<serialize::Color>& cv) {
+    json::Array result;
+    result.reserve(cv.size());
+    for (const auto& c : cv) {
+        result.emplace_back(ToNode(c));
+    }
+
+    return json::Node(std::move(result));
+}
+
+json::Node GetRenderSettingsFromDB(const serialize::TransportCatalogue& database) {
+    const serialize::RenderSettings& rs = database.render_settings();
+    return json::Node(json::Dict{
+                    {{"width"s},{ rs.width() }},
+                    {{"height"s},{ rs.height() }},
+                    {{"padding"s},{ rs.padding() }},
+                    {{"stop_radius"s},{ rs.stop_radius() }},
+                    {{"line_width"s},{ rs.line_width() }},
+                    {{"bus_label_font_size"s},{ rs.bus_label_font_size() }},
+                    {{"bus_label_offset"s},ToNode(rs.bus_label_offset())},
+                    {{"stop_label_font_size"s},{rs.stop_label_font_size()}},
+                    {{"stop_label_offset"s},ToNode(rs.stop_label_offset())},
+                    {{"underlayer_color"s},ToNode(rs.underlayer_color())},
+                    {{"underlayer_width"s},{rs.underlayer_width()}},
+                    {{"color_palette"s},ToNode(rs.color_palette())},
+        });
+}
+
+json::Node GetRouterSettingsFromDB(const serialize::Router& router) {
+    const serialize::RouterSettings& rs = router.router_settings();
+    return json::Node(json::Dict{
+                    {{"bus_wait_time"s},{ rs.bus_wait_time() }},
+                    {{"bus_velocity"s},{ rs.bus_velocity() }}
+        });
+}
+
+graph::DirectedWeightedGraph<double> GetGraphFromDB(const serialize::Router& router) {
+    const serialize::Graph& g = router.graph();
+    std::vector<graph::Edge<double>> edges(g.edge_size());
+    std::vector<std::vector<graph::EdgeId>> incidence_lists(g.vertex_size());
+    for (size_t i = 0; i < edges.size(); ++i) {
+        const serialize::Edge& e = g.edge(i);
+        edges[i] = { e.name(), static_cast<size_t>(e.quality()),
+        static_cast<size_t>(e.from()), static_cast<size_t>(e.to()), e.weight() };
+    }
+    for (size_t i = 0; i < incidence_lists.size(); ++i) {
+        const serialize::Vertex& v = g.vertex(i);
+        incidence_lists[i].reserve(v.edge_id_size());
+        for (const auto& id : v.edge_id()) {
+            incidence_lists[i].push_back(id);
+        }
+    }
+
+    return graph::DirectedWeightedGraph<double>(edges, incidence_lists);
+}
+
+std::map<std::string, graph::VertexId> GetStopIdsFromDB(const serialize::Router& router) {
+    std::map<std::string, graph::VertexId> result;
+    for (const auto& s : router.stop_id()) {
+        result[s.name()] = s.id();
+    }
+
+    return result;
+}
+
+std::tuple<transport::Catalogue, renderer::MapRenderer, transport::Router,
+    graph::DirectedWeightedGraph<double>, std::map<std::string, graph::VertexId>>
+    Deserialize(std::istream& input) {
+    serialize::TransportCatalogue database;
+    database.ParseFromIstream(&input);
+    transport::Catalogue tcat;
+    renderer::MapRenderer renderer(GetRenderSettingsFromDB(database));
+    transport::Router router(GetRouterSettingsFromDB(database.router()));
+    AddStopFromDB(tcat, database);
+    AddBusFromDB(tcat, database);
+    return { std::move(tcat), std::move(renderer), std::move(router),
+                            GetGraphFromDB(database.router()),
+                            GetStopIdsFromDB(database.router()) };
+}
